@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "exchange-simulator"
+version = "0.1.0"
+description = "Agent-based market simulator: market makers, noise traders, momentum chasers and fundamentalists trading on a real matching engine — fat tails, volatility clustering and flash crashes emerge on their own"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.23",
+    "quantsim @ git+https://github.com/hilothefunnydog123-coder/quantsim.git",
+]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.6"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+exchange-sim = "exchange_sim.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["exchange_sim*"]
