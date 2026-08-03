@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "exchange-simulator"
-version = "0.1.0"
-description = "Agent-based market simulator: market makers, noise traders, momentum chasers and fundamentalists trading on a real matching engine — fat tails, volatility clustering and flash crashes emerge on their own"
+version = "0.2.0"
+description = "Agent-based market simulator with balance sheets and a funding network: dealers, levered funds, HFT, pensions and retail on a real matching engine — fat tails, volatility clustering, flash crashes and deleveraging cascades emerge on their own"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }

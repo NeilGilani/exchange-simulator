@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from exchange_sim.balance import BalanceSheet, RiskLimits
+
 
 @dataclass
 class OrderIntent:
@@ -29,22 +31,63 @@ class OrderIntent:
 
 @dataclass
 class MarketView:
-    """What an agent is allowed to see: public information only."""
+    """What an agent is allowed to see: public information only.
+
+    ``volatility`` and ``drawdown`` are derived from the public tape, so
+    handing them over grants no private information — it just saves every
+    agent recomputing the same rolling statistics. Risk-sensitive agents
+    (dealers deciding whether to keep lending, HFT deciding whether to keep
+    quoting) key off these.
+    """
     step: int
     mid: float
     best_bid: float | None
     best_ask: float | None
     mid_history: list[float] = field(default_factory=list)
+    volatility: float = 0.0
+    drawdown: float = 0.0
+    #: agents that have failed so far — public knowledge, and it scares people
+    failures: int = 0
 
 
 class Agent:
-    """Base agent: subclasses implement act(view) -> list[OrderIntent]."""
+    """Base agent: subclasses implement act(view) -> list[OrderIntent].
 
-    def __init__(self, name: str, cash: float = 0.0, inventory: float = 0.0):
+    Every agent carries a :class:`~exchange_sim.balance.BalanceSheet`.
+    ``cash`` and ``inventory`` remain plain attributes (they proxy the
+    sheet), so simple agents can ignore balance sheets entirely while
+    levered ones borrow, get margin-called and fail.
+    """
+
+    def __init__(self, name: str, cash: float = 0.0, inventory: float = 0.0,
+                 limits: RiskLimits | None = None):
         self.name = name
-        self.cash = cash
-        self.inventory = inventory
+        self.sheet = BalanceSheet(cash=cash, inventory=inventory)
+        self.limits = limits or RiskLimits()
         self.open_order_ids: list[str] = []
+        #: name -> agent, injected by the Exchange so creditors are reachable
+        self._peers: dict[str, "Agent"] = {}
+
+    # cash/inventory proxy the balance sheet so old code keeps working
+    @property
+    def cash(self) -> float:
+        return self.sheet.cash
+
+    @cash.setter
+    def cash(self, value: float) -> None:
+        self.sheet.cash = value
+
+    @property
+    def inventory(self) -> float:
+        return self.sheet.inventory
+
+    @inventory.setter
+    def inventory(self, value: float) -> None:
+        self.sheet.inventory = value
+
+    @property
+    def failed(self) -> bool:
+        return self.sheet.failed
 
     def act(self, view: MarketView, rng: np.random.Generator) -> list[OrderIntent]:
         raise NotImplementedError
@@ -54,7 +97,16 @@ class Agent:
         return False
 
     def wealth(self, mid: float) -> float:
-        return self.cash + self.inventory * mid
+        """Mark-to-market net worth, including money owed to and by others."""
+        return self.sheet.equity(mid)
+
+    def target_leverage(self, view: MarketView) -> float:
+        """How levered this agent *wants* to be. 1.0 means unlevered.
+
+        The funding desk reads this each step to size loans. Agents that
+        never borrow leave it at 1.0.
+        """
+        return 1.0
 
 
 class MarketMaker(Agent):
