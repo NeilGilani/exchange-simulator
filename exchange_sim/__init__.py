@@ -26,6 +26,16 @@ from exchange_sim.engine import (
     flash_crash,
     systemic_market,
 )
+from exchange_sim.forecast import (
+    Forecast,
+    Scorecard,
+    brier_score,
+    crps,
+    forecast,
+    random_walk_forecast,
+    skill_score,
+    walk_forward,
+)
 from exchange_sim.fragility import (
     FragilityReport,
     ShockOutcome,
@@ -77,6 +87,9 @@ __all__ = [
     # fragility
     "SystemState", "ShockOutcome", "FragilityReport", "measure_state",
     "shock_response", "leverage_sweep",
+    # forecasting
+    "Forecast", "Scorecard", "forecast", "random_walk_forecast", "walk_forward",
+    "crps", "brier_score", "skill_score",
     # history
     "Series", "StooqSource", "SP500Source", "CSVSource", "SyntheticEpisode",
     "DataUnavailable", "replay", "replay_report",

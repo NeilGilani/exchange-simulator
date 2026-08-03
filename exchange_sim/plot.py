@@ -156,3 +156,55 @@ def plot_fragility(report, path: str, title: str = "shock absorption") -> None:
     fig.tight_layout()
     fig.savefig(path, dpi=140, facecolor=fig.get_facecolor())
     plt.close(fig)
+
+
+def plot_forecast(forecast, path: str, baseline=None,
+                  title: str = "forecast") -> None:
+    """Fan chart of simulated futures, with the null model drawn over it.
+
+    The baseline is plotted deliberately: a fan chart on its own looks
+    authoritative regardless of whether it carries any information, and the
+    honest comparison is against a random walk rather than against nothing.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, (ax_fan, ax_hist) = plt.subplots(
+        2, 1, figsize=(9, 7.5), gridspec_kw={"height_ratios": [3, 2]})
+    _dark(fig, (ax_fan, ax_hist))
+
+    steps = np.arange(len(forecast.fan["p50"]))
+    ax_fan.fill_between(steps, forecast.fan["p5"], forecast.fan["p95"],
+                        color="#3fb950", alpha=0.18, label="90% of paths")
+    ax_fan.fill_between(steps, forecast.fan["p25"], forecast.fan["p75"],
+                        color="#3fb950", alpha=0.32, label="50% of paths")
+    ax_fan.plot(steps, forecast.fan["p50"], color="#3fb950", linewidth=1.4,
+                label="median path")
+    ax_fan.axhline(forecast.origin_mid, color="#8b949e", linestyle=":",
+                   linewidth=1.0, label="price today")
+    if baseline is not None:
+        ax_fan.plot(steps, baseline.fan["p5"], color="#58a6ff", linestyle="--",
+                    linewidth=1.0, label="random walk, 5th/95th")
+        ax_fan.plot(steps, baseline.fan["p95"], color="#58a6ff", linestyle="--",
+                    linewidth=1.0)
+    ax_fan.set_ylabel("price", color="#8b949e", fontsize=8)
+    ax_fan.set_xlabel("steps ahead", color="#8b949e", fontsize=8)
+    ax_fan.legend(facecolor="#161b22", edgecolor="#30363d", labelcolor="#e6edf3",
+                  fontsize=8)
+    ax_fan.set_title(title, color="#e6edf3", fontsize=11)
+
+    ax_hist.hist(forecast.terminal_returns * 100, bins=40, color="#3fb950",
+                 alpha=0.8, label="simulated outcomes")
+    ax_hist.axvline(0, color="#8b949e", linestyle=":", linewidth=1.0)
+    lo, hi = forecast.interval(0.90)
+    ax_hist.set_title(
+        f"terminal return: median {forecast.median():+.1%}, "
+        f"90% interval {lo:+.1%} to {hi:+.1%} — "
+        f"NOT shown to beat a random walk",
+        color="#8b949e", fontsize=8)
+    ax_hist.set_xlabel("return over the horizon (%)", color="#8b949e", fontsize=8)
+
+    fig.tight_layout()
+    fig.savefig(path, dpi=140, facecolor=fig.get_facecolor())
+    plt.close(fig)

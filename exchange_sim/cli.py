@@ -11,6 +11,7 @@ from exchange_sim.engine import (
     flash_crash,
     systemic_market,
 )
+from exchange_sim.forecast import forecast, random_walk_forecast, walk_forward
 from exchange_sim.fragility import measure_state, shock_response
 from exchange_sim.stats import max_drawdown, stylized_facts
 
@@ -160,6 +161,60 @@ def _cmd_replay(args) -> None:
         print(f"chart saved to {args.plot}\n")
 
 
+def _cmd_forecast(args) -> None:
+    exchange = systemic_market(seed=args.seed, fund_leverage=args.leverage,
+                               base_haircut=args.haircut)
+    exchange.run(args.warmup)
+    model = forecast(exchange, horizon=args.horizon, runs=args.runs,
+                     seed=args.seed)
+    baseline = random_walk_forecast(exchange.tape.returns(), horizon=args.horizon,
+                                    runs=max(args.runs, 200), seed=args.seed,
+                                    origin_mid=exchange._mid())
+    print()
+    print(model.summary())
+    print(f"\n{DIM}same horizon, random-walk baseline: median "
+          f"{baseline.median():+.1%}, 90% interval "
+          f"{baseline.interval(0.9)[0]:+.1%} to {baseline.interval(0.9)[1]:+.1%}{RESET}")
+    print(f"\n{RED}This distribution has NOT been shown to beat a random walk.{RESET}")
+    print(f"{DIM}Run `exchange-sim backtest` to see the measured skill before "
+          f"you trust any number above.{RESET}\n")
+    if args.plot:
+        from exchange_sim.plot import plot_forecast
+        plot_forecast(model, args.plot, baseline=baseline,
+                      title=f"forecast — {args.horizon} steps, {model.runs} paths")
+        print(f"chart saved to {args.plot}\n")
+
+
+def _cmd_backtest(args) -> None:
+    from exchange_sim.history import (
+        CSVSource, DataUnavailable, SP500Source, SyntheticEpisode,
+    )
+    if args.csv:
+        source = CSVSource(args.csv)
+    elif args.synthetic:
+        source = SyntheticEpisode(name=args.synthetic, length=args.length,
+                                  seed=args.seed)
+    else:
+        source = SP500Source()
+    try:
+        series = source.fetch("SP500")
+    except DataUnavailable as exc:
+        print(f"\n{RED}could not load data{RESET}: {exc}\n")
+        raise SystemExit(2)
+    if args.start or args.end:
+        series = series.slice(args.start, args.end)
+
+    print(f"\n{BOLD}{CYAN}exchange-sim backtest{RESET} — {series.label()}")
+    print(f"{DIM}forecasting from each origin using only data available then"
+          f"{RESET}\n")
+    card = walk_forward(series, origins=args.origins, warmup_steps=args.warmup,
+                        horizon_steps=args.horizon, months_ahead=args.months,
+                        runs=args.runs, seed=args.seed,
+                        fund_leverage=args.leverage, base_haircut=args.haircut)
+    print(card.summary())
+    print()
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="exchange-sim",
@@ -223,12 +278,42 @@ def main(argv: list[str] | None = None) -> None:
     rep.add_argument("--plot", metavar="PATH.png")
     rep.set_defaults(func=_cmd_replay)
 
+    fc = sub.add_parser("forecast",
+                        help="probability distribution over the next N steps")
+    fc.add_argument("--seed", type=int, default=42)
+    fc.add_argument("--warmup", type=int, default=300)
+    fc.add_argument("--horizon", type=int, default=250)
+    fc.add_argument("--runs", type=int, default=100)
+    fc.add_argument("--leverage", type=float, default=6.0)
+    fc.add_argument("--haircut", type=float, default=0.10)
+    fc.add_argument("--plot", metavar="PATH.png")
+    fc.set_defaults(func=_cmd_forecast)
+
+    bt = sub.add_parser("backtest",
+                        help="score forecasts against real history, out of sample")
+    bt.add_argument("--csv", help="local CSV with Date/Close columns")
+    bt.add_argument("--synthetic", metavar="NAME")
+    bt.add_argument("--length", type=int, default=750)
+    bt.add_argument("--start", default="1950-01-01")
+    bt.add_argument("--end", default="2024-12-31")
+    bt.add_argument("--origins", type=int, default=14)
+    bt.add_argument("--months", type=int, default=12,
+                    help="forecast horizon in months of real time")
+    bt.add_argument("--warmup", type=int, default=350)
+    bt.add_argument("--horizon", type=int, default=180)
+    bt.add_argument("--runs", type=int, default=40)
+    bt.add_argument("--seed", type=int, default=0)
+    bt.add_argument("--leverage", type=float, default=6.0)
+    bt.add_argument("--haircut", type=float, default=0.10)
+    bt.set_defaults(func=_cmd_backtest)
+
     # bare `exchange-sim --steps N` still works, as it did before subcommands
     if argv is None:
         import sys
         argv = sys.argv[1:]
     argv = list(argv)
-    if not argv or argv[0] not in {"run", "fragility", "replay", "-h", "--help"}:
+    if not argv or argv[0] not in {"run", "fragility", "replay",
+                                   "forecast", "backtest", "-h", "--help"}:
         argv = ["run"] + argv
 
     args = parser.parse_args(argv)

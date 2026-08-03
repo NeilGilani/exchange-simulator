@@ -35,6 +35,8 @@ exchange-sim run --steps 4000 --seed 42 --plot market.png
 exchange-sim run --scenario credit-crisis --leverage 20 --plot crisis.png
 exchange-sim fragility --leverage 20 --plot fragility.png
 exchange-sim replay --synthetic gfc --plot replay.png
+exchange-sim forecast --plot fan.png        # a forecast...
+exchange-sim backtest                       # ...and its measured skill
 ```
 
 **No terminal?** Open [colab.research.google.com](https://colab.research.google.com), make a new notebook, and run one cell:
@@ -124,11 +126,60 @@ Replaying the real 2006–2009 S&P 500 (a −50.8% drawdown) through ecologies a
 
 The bottom two rows are **the model breaking, not a finding**. At 6x and above, a 50% fundamental decline leaves no equilibrium: forced selling clears the book and price pins to the tick floor, so −100.0% is a floor artefact rather than a market outcome. Trust the 1.5–3x rows; treat anything that hits exactly −100% as out of range. Reporting the failure mode rather than quietly showing you the 3x row is the point.
 
+### 5. Forecasting, and its scorecard — [`forecast.py`](exchange_sim/forecast.py)
+
+The model *can* produce a genuine forecast: a conditional probability distribution over future paths, generated with the future detached (`free_fundamental=True`), so it is falsifiable rather than read off an input.
+
+```bash
+exchange-sim forecast --leverage 6 --plot fan.png
+```
+
+```
+  median return        +0.1%
+  90% interval         -1.2% to +1.6%
+  P(drawdown > 10%)    0%
+  P(any agent fails)   0%
+```
+
+**And then you have to score it.** The forecaster and the scoring harness live in the same module deliberately — it should be hard to use one without meeting the other.
+
+```bash
+exchange-sim backtest --origins 14
+```
+
+Walk-forward over real S&P 500 history, 1950–2024. At each origin the model sees only data available then; the outcome 12 months later is scored with CRPS (a proper scoring rule) against a random walk fitted to the same trailing volatility:
+
+```
+  CRPS  agent model      0.2124   (lower is better)
+  CRPS  random walk      0.1228
+  CRPS  skill            -73.0%
+
+  directional accuracy   86%
+  always-guess-majority  93%  <- the number to beat, NOT 50%
+  directional edge       -7%
+
+  90% interval coverage  21%  (target 90%; below target = overconfident)
+
+  VERDICT: WORSE than a random walk — do not use for forecasting
+```
+
+**Read that carefully, because it is the honest answer to "can it predict crashes?".**
+
+- **CRPS skill −73%.** The agent model is substantially *worse* than a driftless random walk. Twenty-odd interacting institutions and a funding network added negative information.
+- **Directional accuracy 86% looks great and is worthless.** Equities rose in 93% of the sampled 12-month windows, so always saying "up" scores 93%. The model scores 86%. Its directional edge is **−7%**. This is exactly the number a dishonest write-up would quote alone, which is why `Scorecard` refuses to print it without the base rate beside it.
+- **90% coverage is 21%.** The fan chart is wildly overconfident: outcomes land outside its "90% interval" four times out of five.
+
+Every forecast the CLI prints carries a pointer to this backtest. A fan chart looks authoritative whether or not it contains information, so the plot draws the random-walk baseline over the top and captions itself "NOT shown to beat a random walk".
+
+**Why it fails is more interesting than that it fails.** The mechanism is sound — the model reproduces fat tails, clustering, margin spirals and contagion — but the thing that would actually move prices twelve months out is information the model does not contain and cannot generate: earnings, policy, credit conditions, war. A faithful mechanism fed no information forecasts nothing. That gap is not closable by making the mechanism better.
+
+Use it for the counterfactual question it answers well (*how does this structure transmit a shock?*), not the predictive one it fails (*what shock is coming?*).
+
 ---
 
 ## 🔬 What the tests actually verify
 
-**45 tests.** Two kinds, deliberately.
+**61 tests.** Three kinds, deliberately.
 
 **Mechanism tests** build a tiny hand-made market and assert exactly what must happen — deterministic, and the ones that would catch a real accounting bug:
 
@@ -151,6 +202,14 @@ The bottom two rows are **the model breaking, not a finding**. At 6x and above, 
 14. **Funding tightens as the market falls**, and dealers quote smaller when stressed
 15. **Damage is monotone in shock size**, measured against an unshocked control
 16. **A heavily levered, loosely financed system is at least as fragile** as a conservative one, under an identical shock
+
+**Forecast-honesty tests** guard against the model flattering itself:
+
+17. CRPS is **proper** — a sharp distribution in the wrong place scores worse than an honest wide one, so bluffing can't win
+18. A forecast **cannot see the future**: `free_fundamental=True` detaches the historical path, and a forecast made with it differs from one made without
+19. Forecasting **does not mutate** the exchange it forecasts from
+20. `Scorecard` always reports directional accuracy **next to the base rate** it must beat, and its summary contains the words "the number to beat"
+21. The verdict says "WORSE than a random walk" when skill is negative
 
 Stylized facts 9–11 mirror the classic properties of asset returns (Cont, 2001).
 
