@@ -52,7 +52,7 @@ print(shock_response(ex, runs=8).summary())
 
 ---
 
-## 🧱 The four layers
+## 🧱 The five layers
 
 ### 1. Balance sheets, leverage and default — [`balance.py`](exchange_sim/balance.py)
 
