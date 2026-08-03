@@ -68,6 +68,45 @@ def test_csv_source_is_marked_real(tmp_path):
     assert len(series.dates) == len(series.closes)
 
 
+def test_sp500_source_parses_its_own_column_name(tmp_path, monkeypatch):
+    """The dataset's close column is ``SP500``, not ``Close``."""
+    from exchange_sim import history
+
+    payload = ("Date,SP500,Dividend\n"
+               "2007-01-01,1424.16,27.0\n"
+               "2008-01-01,1378.76,28.0\n"
+               "2009-03-01,757.13,22.0\n")
+
+    class FakeResponse:
+        def read(self):
+            return payload.encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(history.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResponse())
+    series = history.SP500Source().fetch()
+
+    assert series.is_real is True
+    assert series.closes == [1424.16, 1378.76, 757.13]
+    assert series.source == "github:datasets/s-and-p-500"
+
+
+def test_sp500_source_raises_when_github_is_blocked(monkeypatch):
+    from exchange_sim import history
+
+    def boom(*a, **k):
+        raise OSError("Tunnel connection failed: 403 Forbidden")
+
+    monkeypatch.setattr(history.urllib.request, "urlopen", boom)
+    with pytest.raises(DataUnavailable, match="raw.githubusercontent.com"):
+        history.SP500Source().fetch()
+
+
 def test_fundamental_path_is_rebased_and_follows_the_series():
     series = SyntheticEpisode(name="bear2022", length=250, seed=2).fetch()
     path = to_fundamental_path(series, steps=1_000, start_price=100.0)

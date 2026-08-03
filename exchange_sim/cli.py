@@ -115,6 +115,7 @@ def _cmd_replay(args) -> None:
     from exchange_sim.history import (
         CSVSource,
         DataUnavailable,
+        SP500Source,
         StooqSource,
         SyntheticEpisode,
         replay,
@@ -123,16 +124,22 @@ def _cmd_replay(args) -> None:
 
     if args.csv:
         source = CSVSource(args.csv)
+    elif args.sp500:
+        source = SP500Source()
     elif args.synthetic:
         source = SyntheticEpisode(name=args.synthetic, length=args.length,
                                   seed=args.seed)
     else:
         source = StooqSource()
+    # --sp500 names its own series; --symbol only means anything to stooq
+    symbol = "SP500" if args.sp500 else args.symbol
     try:
-        series = source.fetch(args.symbol)
+        series = source.fetch(symbol)
     except DataUnavailable as exc:
         print(f"\n{RED}could not load data{RESET}: {exc}\n")
-        print(f"{DIM}Offline? Use --synthetic gfc for a clearly-labelled "
+        print(f"{DIM}Blocked? Try --sp500 (served from GitHub, which is often "
+              f"allowed when market-data hosts are not), or --synthetic gfc "
+              f"for a clearly-labelled "
               f"synthetic series, or download a CSV with Date/Close columns "
               f"and pass --csv PATH.{RESET}\n")
         raise SystemExit(2)
@@ -198,6 +205,9 @@ def main(argv: list[str] | None = None) -> None:
     rep = sub.add_parser("replay", help="drive the fundamental from a real series")
     rep.add_argument("--symbol", default="spy.us", help="stooq symbol, e.g. spy.us")
     rep.add_argument("--csv", help="local CSV with Date/Close columns")
+    rep.add_argument("--sp500", action="store_true",
+                     help="real monthly S&P 500 from a GitHub dataset — often "
+                          "reachable when market-data hosts are blocked")
     rep.add_argument("--synthetic", metavar="NAME",
                      help="use a SYNTHETIC episode instead of real data "
                           "(calm, bull, gfc, covid, bear2022)")

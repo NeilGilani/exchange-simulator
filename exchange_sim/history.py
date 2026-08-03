@@ -117,6 +117,47 @@ class StooqSource:
         return _parse_csv(payload, symbol, source=f"stooq:{symbol}")
 
 
+class SP500Source:
+    """Real S&P 500 closes, served from a public dataset repository on GitHub.
+
+    Exists because of a practical asymmetry: sandboxes that block market-data
+    hosts (stooq, Yahoo, FRED) usually still allow GitHub, since they need it
+    to fetch code. So when :class:`StooqSource` is refused, this often works.
+
+    Two caveats worth knowing before you quote a number from it:
+
+    - **The series is monthly, not daily.** Four years of history is ~48
+      points. The replay interpolates between them, so intra-month structure
+      in the resulting path is manufactured by the interpolation and means
+      nothing. Drawdowns and regime shape survive; anything faster does not.
+    - It is a *fundamental* series, which is how the model consumes it. It is
+      not a tape, and the simulator's emergent prices are not comparable to
+      real intraday prices.
+
+    Data: https://github.com/datasets/s-and-p-500 (Robert Shiller's dataset).
+    """
+
+    url = ("https://raw.githubusercontent.com/datasets/s-and-p-500/"
+           "main/data/data.csv")
+    host = "raw.githubusercontent.com"
+
+    def __init__(self, timeout: float = 25.0):
+        self.timeout = timeout
+
+    def fetch(self, symbol: str = "SP500") -> Series:
+        try:
+            with urllib.request.urlopen(self.url, timeout=self.timeout) as response:
+                payload = response.read().decode("utf-8", errors="replace")
+        except (urllib.error.URLError, OSError) as exc:
+            raise DataUnavailable(
+                f"could not reach {self.host} for the S&P 500 dataset: {exc}. "
+                f"Download it manually and pass --csv instead."
+            ) from exc
+        return _parse_csv(payload, symbol or "SP500",
+                          source="github:datasets/s-and-p-500",
+                          close_column="sp500")
+
+
 class CSVSource:
     """Read a series from a local CSV with ``Date`` and ``Close`` columns.
 
@@ -137,19 +178,21 @@ class CSVSource:
         return _parse_csv(payload, symbol or self.path, source=f"csv:{self.path}")
 
 
-def _parse_csv(payload: str, symbol: str, source: str) -> Series:
+def _parse_csv(payload: str, symbol: str, source: str,
+               close_column: str = "close") -> Series:
     reader = csv.DictReader(io.StringIO(payload))
     if reader.fieldnames is None:
         raise DataUnavailable(f"{source}: empty response")
     columns = {name.lower().strip(): name for name in reader.fieldnames}
-    if "close" not in columns or "date" not in columns:
+    if close_column not in columns or "date" not in columns:
         raise DataUnavailable(
-            f"{source}: expected Date and Close columns, got {reader.fieldnames}")
+            f"{source}: expected Date and {close_column.title()} columns, "
+            f"got {reader.fieldnames}")
     dates: list[str] = []
     closes: list[float] = []
     for row in reader:
         try:
-            close = float(row[columns["close"]])
+            close = float(row[columns[close_column]])
         except (TypeError, ValueError):
             continue           # holidays and blank rows
         if close <= 0:

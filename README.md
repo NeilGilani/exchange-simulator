@@ -113,6 +113,17 @@ exchange-sim replay --symbol spy.us --start 2007-01-01 --end 2009-06-30 --plot g
 
 **Be clear about what this proves.** It's a test of the *mechanism* — does an ecology with this much leverage reproduce the drawdown and funding stress that actually showed up? It is **not** a forecast and not a strategy backtest. The model is being *handed* 2008 and asked what a levered market does with it. It is not discovering that 2008 was coming.
 
+Replaying the real 2006–2009 S&P 500 (a −50.8% drawdown) through ecologies at different leverage:
+
+| fund leverage | emergent drawdown | overshoot vs fundamental | failures |
+|---|---|---|---|
+| 1.5x | −52.3% | −1.5% | 1 |
+| 3x | −49.9% | +0.9% | 3 |
+| 6x | −100.0% | −49.2% | 10 |
+| 20x | −100.0% | −49.2% | 12 |
+
+The bottom two rows are **the model breaking, not a finding**. At 6x and above, a 50% fundamental decline leaves no equilibrium: forced selling clears the book and price pins to the tick floor, so −100.0% is a floor artefact rather than a market outcome. Trust the 1.5–3x rows; treat anything that hits exactly −100% as out of range. Reporting the failure mode rather than quietly showing you the 3x row is the point.
+
 ---
 
 ## 🔬 What the tests actually verify
@@ -181,12 +192,15 @@ class PanicSeller(Agent):
 could not load data: could not reach stooq.com for 'spy.us': Tunnel connection failed: 403 Forbidden
 ```
 
-Two ways round it:
+Three ways round it:
 
 ```bash
+exchange-sim replay --sp500 --start 2006-01-01 --end 2009-12-31   # real, via GitHub
 exchange-sim replay --csv ./spy.csv                # any CSV with Date,Close columns
 exchange-sim replay --synthetic gfc                # SYNTHETIC, and labelled as such
 ```
+
+`--sp500` pulls **real** S&P 500 closes from a [public dataset repo](https://github.com/datasets/s-and-p-500), which usually works even in sandboxes that block market-data hosts — they still need GitHub to fetch code. Two caveats: the series is **monthly** (four years ≈ 48 points, so intra-month structure in the replay is interpolation artefact, not data), and it is consumed as a *fundamental*, not as a tape.
 
 Synthetic episodes (`calm`, `bull`, `gfc`, `covid`, `bear2022`) are regime-*shaped* series for offline work. They are always marked `is_real=False` and print as `SYNTHETIC`. Calling one `"gfc"` describes its shape, not its provenance — a synthetic series quietly standing in for a real one is exactly how a model ends up "validated" against nothing.
 

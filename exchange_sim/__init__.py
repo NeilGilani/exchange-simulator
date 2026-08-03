@@ -38,6 +38,7 @@ from exchange_sim.history import (
     CSVSource,
     DataUnavailable,
     Series,
+    SP500Source,
     StooqSource,
     SyntheticEpisode,
     replay,
@@ -77,7 +78,7 @@ __all__ = [
     "SystemState", "ShockOutcome", "FragilityReport", "measure_state",
     "shock_response", "leverage_sweep",
     # history
-    "Series", "StooqSource", "CSVSource", "SyntheticEpisode",
+    "Series", "StooqSource", "SP500Source", "CSVSource", "SyntheticEpisode",
     "DataUnavailable", "replay", "replay_report",
     # stats
     "excess_kurtosis", "autocorr", "volatility_clustering", "max_drawdown",
