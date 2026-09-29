@@ -1,10 +1,10 @@
 # 🏛️ exchange-simulator
 
-**An agent-based market where realistic behaviour — and realistic failure — *emerges*.** Dealer banks, levered hedge funds, HFT market makers, pension funds and retail traders trade against each other on a real price-time priority matching engine (from [quantsim](https://github.com/hilothefunnydog123-coder/quantsim)), financed by a real funding network. Nobody programs the market to have fat tails, volatility clustering, flash crashes or deleveraging spirals — those emerge from the interaction, and the test suite verifies them statistically.
+**An agent-based market where realistic behaviour — and realistic failure — *emerges*.** Dealer banks, levered hedge funds, HFT market makers, pension funds and retail traders trade against each other on a real price-time priority matching engine (from [quantsim](https://github.com/NeilGilani/quantsim)), financed by a real funding network. Nobody programs the market to have fat tails, volatility clustering, flash crashes or deleveraging spirals — those emerge from the interaction, and the test suite verifies them statistically.
 
-![Credit crisis: an 18% repricing at 20x leverage. Haircuts tighten, book depth collapses, then two funds fail.](docs/credit-crisis.png)
+![Credit crisis: an 18% repricing with hedge funds targeting 20x leverage. Haircuts tighten, book depth collapses, then two funds fail.](docs/credit-crisis.png)
 
-*An 18% fundamental repricing hits a market financed at 20x. Nothing after the red line is scripted. Haircuts widen from 12% to 25%, book depth collapses from ~836 resting shares to 99, price overshoots to −28.5%, and 26 steps later two momentum funds run out of equity and fail — writing 9,559 off against both dealers, split pro-rata. Run the same shock at 3x and none of it happens.*
+*An 18% fundamental repricing hits a market whose hedge funds target 20x leverage (measured leverage of the levered funds just before the shock: about 2.8x). Nothing after the red line is scripted. Haircuts rise to 25%, resting book depth falls from ~836 shares (pre-shock average) to 99, the price trades as much as 25% below its pre-shock level, and 26 steps later two momentum funds run out of equity and fail — writing 9,559 off against both dealers, split pro-rata. With a 3x leverage target the same shock produces no failures and no write-offs.*
 
 ---
 
@@ -29,7 +29,7 @@ That is a statement about **fragility**, which is measurable. It is not a statem
 ## 🚀 Quickstart
 
 ```bash
-pip install "exchange-simulator[plot] @ git+https://github.com/hilothefunnydog123-coder/exchange-simulator.git"
+pip install "exchange-simulator[plot] @ git+https://github.com/NeilGilani/exchange-simulator.git"
 
 exchange-sim run --steps 4000 --seed 42 --plot market.png
 exchange-sim run --scenario credit-crisis --leverage 20 --plot crisis.png
@@ -42,7 +42,7 @@ exchange-sim backtest                       # ...and its measured skill
 **No terminal?** Open [colab.research.google.com](https://colab.research.google.com), make a new notebook, and run one cell:
 
 ```python
-!pip install -q "exchange-simulator[plot] @ git+https://github.com/hilothefunnydog123-coder/exchange-simulator.git"
+!pip install -q "exchange-simulator[plot] @ git+https://github.com/NeilGilani/exchange-simulator.git"
 
 from exchange_sim import systemic_market, shock_response
 ex = systemic_market(seed=42, fund_leverage=20, base_haircut=0.10)
@@ -79,7 +79,9 @@ What separates these agents is not their signal — several trade on much the sa
 | **RetailTrader** | small, herds on returns, capitulates | panic supply at the bottom |
 | **MarketMaker / NoiseTrader / MomentumTrader / FundamentalTrader** | the original four | microstructure: spread, background flow, amplification, anchoring |
 
-The **funding channel** matters more than any single agent. `FundingDesk` translates dealer risk appetite into every borrower's maintenance margin — so a haircut moving from 20% to 34% mechanically margin-calls every fund financed at 4x, **simultaneously**. No agent decides to start a spiral.
+The **funding channel** is meant to matter more than any single agent. `FundingDesk` translates dealer risk appetite into every borrower's maintenance margin, so a haircut moving from 20% to 34% should margin-call every fund financed at 4x, **simultaneously**. No agent decides to start a spiral.
+
+> **Known issue.** `Exchange.step` passes the exchange-wide `RiskLimits` to `resolve_stress`, so the per-borrower limits `FundingDesk` writes are currently read only by the fragility headroom metric, not by margin calls. Wiring them through changes the headline credit-crisis run above (to no failures), so the fix and the updated figures belong in the same change.
 
 ### 3. The fragility gauge — [`fragility.py`](exchange_sim/fragility.py)
 
@@ -276,7 +278,9 @@ exchange-sim run --scenario credit-crisis  # 2008: repricing into leverage
 
 `flash-crash` and `credit-crisis` are the two different ways a market breaks. The first is a *liquidity* crisis — nobody borrows, nobody fails, the book just empties. The second is a *credit* crisis — the loss is somebody else's asset.
 
-![Flash crash: price detaches from fundamental and craters when liquidity withdraws, then V-recovers](docs/flash-crash.png)
+![Flash-crash scenario, seed 42: with liquidity providers withdrawn, price detaches from the fundamental in both directions inside the outage window](docs/flash-crash.png)
+
+*Seed 42, the run in the figure: inside the outage window the price dips about 1.5% and then spikes about 6.5% above the fundamental. Across the test seeds the dislocation goes both ways; the mean trough is about −6%.*
 
 ---
 
